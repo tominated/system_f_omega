@@ -75,3 +75,20 @@ let rec alpha_equiv a b =
   | RowExtend _, RowExtend _ -> (* TODO *) false
   | Group a, Group b | Group a, b | a, Group b | Record a, Record b -> alpha_equiv a b
   | _ -> false
+
+module Test = struct
+  let fmt = Fmt.of_to_string to_string
+  let ty = Alcotest.testable fmt alpha_equiv
+
+  let x_var = Bindlib.new_var mkfree "x"
+  let y_var = Bindlib.new_var mkfree "y"
+
+  let id_term = Arrow ((Var x_var), (Var x_var))
+
+  let alpha_equiv_test () =
+    Alcotest.(check ty) "id fn is equiv to itself" (id_term) id_term;
+    Alcotest.(check ty) "var x and x are equiv" (Var x_var) (Var x_var)
+    
+
+  let test_suite = [("alpha_equiv", `Quick, alpha_equiv_test)]
+end

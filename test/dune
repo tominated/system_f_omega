@@ -1,0 +1,9 @@
+(executable
+ (name run_tests)
+ (libraries alcotest lib))
+
+(alias
+ (name runtest)
+ (deps run_tests.exe)
+ (action
+  (run %{deps} -q --color=always)))
