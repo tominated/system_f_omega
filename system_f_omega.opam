@@ -1,0 +1,14 @@
+opam-version: "2.0"
+version: "0.1"
+synopsis: "A basic implementation of System F Omega with row-polymorphism"
+authors: "Tom Brunoli <tom@tombrunoli.com>"
+license: "MIT"
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+]
+depends: [
+  "dune"
+  "base"
+  "stdio"
+  "bindlib"
+]

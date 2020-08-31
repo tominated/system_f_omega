@@ -1,0 +1,4 @@
+(executable
+ (name main)
+ (public_name system_f_omega)
+ (libraries base stdio lib bindlib))
