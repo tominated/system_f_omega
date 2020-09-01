@@ -40,6 +40,10 @@ let rec to_string = function
   | Record t ->
       Printf.sprintf "{ %s }" (to_string t)
 
+let ungroup = function
+  | Group t -> t
+  | t -> t
+
 let mkfree x = Var x
 
 let var : t Bindlib.var -> t Bindlib.box = Bindlib.box_var
@@ -88,8 +92,7 @@ let rec alpha_equiv a b =
   | _ -> false
 
 module Test = struct
-  let fmt = Fmt.of_to_string to_string
-  let ty = Alcotest.testable fmt alpha_equiv
+  let ty = Alcotest.testable (Fmt.of_to_string to_string) alpha_equiv
 
   let x_var = Bindlib.new_var mkfree "x"
   let y_var = Bindlib.new_var mkfree "y"
