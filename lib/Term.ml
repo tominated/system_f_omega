@@ -10,6 +10,7 @@ type t =
   | RowExtend of (string * t) * t
   | Record of t
   | RecordProject of t * string
+  | Fix of t
 
 let rec to_string = function
   | Var x -> Bindlib.name_of x
@@ -36,6 +37,8 @@ let rec to_string = function
       Printf.sprintf "{ %s }" (to_string t)
   | RecordProject (t, label) ->
       Printf.sprintf "%s.%s" (to_string t) label
+  | Fix t ->
+      Printf.sprintf "fix (%s)" (to_string t)
 
 let mkfree x = Var x
 
@@ -48,6 +51,7 @@ let row_empty = Bindlib.box RowEmpty
 let row_extend = Bindlib.box_apply3 (fun label te rest -> RowExtend ((label, te), rest))
 let record = Bindlib.box_apply (fun t -> Record t)
 let record_project = Bindlib.box_apply2(fun ty label -> RecordProject (ty, label))
+let fix = Bindlib.box_apply (fun t -> Fix t)
 
 let rec lift = function
   | Var x -> var x
@@ -60,3 +64,4 @@ let rec lift = function
       row_extend (Bindlib.box label) (lift t) (lift rest)
   | Record t -> record (lift t)
   | RecordProject (t, label) -> record_project (lift t) (Bindlib.box label)
+  | Fix t -> fix (lift t)

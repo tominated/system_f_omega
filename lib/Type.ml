@@ -10,6 +10,7 @@ type t =
   | RowEmpty
   | RowExtend of (string * t) * t
   | Record of t
+  | Fix of t
 
 let rec to_string = function
   | Var x -> Bindlib.name_of x
@@ -39,6 +40,8 @@ let rec to_string = function
   | Record RowEmpty -> "{}"
   | Record t ->
       Printf.sprintf "{ %s }" (to_string t)
+  | Fix t ->
+      Printf.sprintf "Fix (%s)" (to_string t)
 
 let ungroup = function
   | Group t -> t
@@ -55,6 +58,7 @@ let group = Bindlib.box_apply (fun t -> Group t)
 let row_empty = Bindlib.box RowEmpty
 let row_extend = Bindlib.box_apply3 (fun label t rest -> RowExtend ((label, t), rest))
 let record = Bindlib.box_apply (fun t -> Record t)
+let fix = Bindlib.box_apply (fun t -> Fix t)
 
 let rec lift = function
   | Var x -> var x
@@ -67,6 +71,7 @@ let rec lift = function
   | RowExtend ((label, t), rest) ->
       row_extend (Bindlib.box label) (lift t) (lift rest)
   | Record t -> record (lift t)
+  | Fix t -> fix (lift t)
 
 let rec alpha_equiv a b =
   match (a, b) with
@@ -88,7 +93,7 @@ let rec alpha_equiv a b =
       let swapped = RowExtend ((l', t'), RowExtend ((l, t), rest)) in
       alpha_equiv swapped b
 
-  | Group a, Group b | Group a, b | a, Group b | Record a, Record b -> alpha_equiv a b
+  | Group a, Group b | Group a, b | a, Group b | Record a, Record b | Fix a, Fix b -> alpha_equiv a b
   | _ -> false
 
 module Test = struct

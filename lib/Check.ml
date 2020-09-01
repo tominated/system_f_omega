@@ -115,6 +115,12 @@ let rec kind_of env : Type.t -> Kind.t = function
       | Row -> Row
       | _ -> failwith "[kind_of] record type must contain a row"
     end
+  
+  | Fix t -> begin
+      match kind_of env t with
+      | Arrow (k, k') when Kind.equal k k' -> k'
+      | _ -> failwith "[kind_of] cannot fix a type that is not of kind K -> K"
+    end
 
 let rec type_of env : Term.t -> Type.t = function
   | Var v -> begin
@@ -175,4 +181,10 @@ let rec type_of env : Term.t -> Type.t = function
       match type_of env record with
       | Record row -> find_in_row label row
       | _ -> failwith "[type_of] expected a record"
+    end
+  
+  | Fix te -> begin
+      match type_of env te with
+      | Arrow (ty, ty') when Type.alpha_equiv ty ty' -> ty'
+      | _ -> failwith "[type_of] cannot fix a term that is not of type T -> T"
     end
