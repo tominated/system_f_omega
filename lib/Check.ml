@@ -162,7 +162,7 @@ let rec type_of env : Term.t -> Type.t = function
   | RowExtend ((label, field), rest) -> begin
       let field_ty = type_of env field in
       match type_of env rest with
-      | RowEmpty -> RowExtend ((label, field_ty), RowEmpty)
+      | RowExtend _ | RowEmpty as rest' -> RowExtend ((label, field_ty), rest')
       | _ -> failwith "[type_of] cannot extend row with non-row"
     end
   
@@ -220,20 +220,94 @@ module Test = struct
   
   let id_ty: Type.t =
     let open Type in
-    let tyvar = Bindlib.new_var Type.mkfree "x" in
+    let tyvar = Bindlib.new_var mkfree "x" in
     let arrow_ty = arrow (var tyvar) (var tyvar) in
-    let body = forall Kind.star (Bindlib.bind_var tyvar arrow_ty) in
-    Bindlib.unbox body
+    forall Kind.star (Bindlib.bind_var tyvar arrow_ty)
+    |> Bindlib.unbox
+  
+  let nat_ty: Type.t =
+    let open Type in
+    let tvar = Bindlib.new_var mkfree "t" in
+    forall Kind.star (Bindlib.bind_var tvar (
+      arrow
+        (var tvar)
+        (arrow
+          (group (arrow (var tvar) (var tvar)))
+          (var tvar))))
+    |> Bindlib.unbox
+  
+  let z_term: Term.t =
+    let open Term in
+    let tvar = Bindlib.new_var Type.mkfree "t" in
+    let bvar = Bindlib.new_var mkfree "b" in
+    let svar = Bindlib.new_var mkfree "s" in
+    let t = Type.var tvar in
+    let b = var bvar in
+    ty_abstract Kind.star (Bindlib.bind_var tvar (
+      abstract t (Bindlib.bind_var bvar (
+        abstract (Type.arrow t t) (Bindlib.bind_var svar b)
+      ))
+    ))
+    |> Bindlib.unbox
+  
+  let succ_term =
+    let open Term in
+    let tvar = Bindlib.new_var Type.mkfree "t" in
+    let xvar = Bindlib.new_var mkfree "x" in
+    let bvar = Bindlib.new_var mkfree "b" in
+    let svar = Bindlib.new_var mkfree "s" in
+    let t = Type.var tvar in
+    let x = var xvar in
+    let b = var bvar in
+    let s = var svar in
+    abstract (Type.lift nat_ty) (Bindlib.bind_var xvar (
+      ty_abstract Kind.star (Bindlib.bind_var tvar (
+        abstract t (Bindlib.bind_var bvar (
+          abstract (Type.arrow t t) (Bindlib.bind_var svar (
+            apply s (
+              apply (apply (ty_apply x t) b) s)))))))))
+    |> Bindlib.unbox
+  
+  let one_term = Term.apply (Term.lift succ_term) (Term.lift z_term)
+  let two_term = Term.apply (Term.lift succ_term) one_term
+  
+  let basic_module_usage: Term.t =
+    let open Term in
+    let basic_module =
+      row_empty
+      |> row_extend (Bindlib.box "z") (Term.lift z_term)
+      |> row_extend (Bindlib.box "id") (Term.lift id_term)
+      |> record
+    in
+    let projected_id = record_project basic_module (Bindlib.box "id") in
+    let nat_id = ty_apply projected_id (Type.lift nat_ty) in
+    Bindlib.unbox @@ apply nat_id two_term
 
   let kind_of_test () =
     Alcotest.check kind
       "unit type has kind star"
-      (Kind.Star) (kind_of Env.empty unit_ty)
+      (Kind.Star) (kind_of Env.empty unit_ty);
+    
+    Alcotest.check kind
+      "nat type has kind star"
+      (Kind.Star) (kind_of Env.empty nat_ty)
   
   let type_of_test () =
     Alcotest.check ty
       "id fn has correct type"
-      id_ty (type_of Env.empty id_term)
+      id_ty (type_of Env.empty id_term);
+    
+    Alcotest.check ty
+      "z has type of nat"
+      nat_ty (type_of Env.empty z_term);
+    
+    Alcotest.check ty
+      "two has type of nat"
+      nat_ty (type_of Env.empty (Bindlib.unbox two_term));
+    
+    Alcotest.check ty
+      "record projection of polymorphic id function, applied to two"
+      nat_ty (type_of Env.empty basic_module_usage)
 
   let test_suite = [
     ("kind_of", `Quick, kind_of_test);
