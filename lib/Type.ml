@@ -102,8 +102,16 @@ module Test = struct
   let x_var = Bindlib.new_var mkfree "x"
   let y_var = Bindlib.new_var mkfree "y"
 
-  let id_term = Arrow ((Var x_var), (Var x_var))
-  let id_term2 = Arrow ((Var y_var), (Var y_var))
+  let id_ty: t =
+    let tyvar = Bindlib.new_var mkfree "x" in
+    let arrow_ty = arrow (var tyvar) (var tyvar) in
+    let body = forall Kind.star (Bindlib.bind_var tyvar arrow_ty) in
+    Bindlib.unbox body
+  let id_ty2: t =
+    let tyvar = Bindlib.new_var mkfree "y" in
+    let arrow_ty = arrow (var tyvar) (var tyvar) in
+    let body = forall Kind.star (Bindlib.bind_var tyvar arrow_ty) in
+    Bindlib.unbox body
 
   let unit_ty = Record RowEmpty
   let row_basic = RowExtend (("x", unit_ty), RowExtend (("y", unit_ty), RowEmpty))
@@ -113,7 +121,7 @@ module Test = struct
   let alpha_equiv_test () =
     Alcotest.check ty
         "id fn is equiv to itself"
-        id_term id_term2;
+        id_ty id_ty2;
 
     Alcotest.check ty
         "var x and x are equiv"
