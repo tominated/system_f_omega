@@ -112,7 +112,7 @@ let rec kind_of env : Type.t -> Kind.t = function
      TODO: Make this a regular type abstraction in the default env *)
   | Record row -> begin
       match kind_of env row with
-      | Row -> Row
+      | Row -> Star
       | _ -> failwith "[kind_of] record type must contain a row"
     end
   
@@ -183,8 +183,60 @@ let rec type_of env : Term.t -> Type.t = function
       | _ -> failwith "[type_of] expected a record"
     end
   
+  | Let (term, binder) ->
+      let term_ty = type_of env term in  
+      let (var, body) = Bindlib.unbind binder in
+      let env' = Env.set_var env var term_ty in
+      type_of env' body
+
+  | LetType (ty, binder) ->
+      let ty_k = kind_of env ty in
+      let (tyvar, body) = Bindlib.unbind binder in
+      let env' = Env.set_ty env tyvar ty_k in
+      type_of env' body
+
   | Fix te -> begin
       match type_of env te with
       | Arrow (ty, ty') when Type.alpha_equiv ty ty' -> ty'
       | _ -> failwith "[type_of] cannot fix a term that is not of type T -> T"
     end
+
+module Test = struct
+  let kind = Alcotest.testable (Fmt.of_to_string Kind.to_string) Kind.equal
+  let ty = Alcotest.testable (Fmt.of_to_string Type.to_string) Type.alpha_equiv
+
+  let unit_ty: Type.t =
+    Bindlib.unbox (Type.record Type.row_empty)
+  
+  let unit_term: Term.t =
+    Bindlib.unbox (Term.record Term.row_empty)
+
+  let id_term: Term.t =
+    let open Term in
+    let tyvar = Bindlib.new_var Type.mkfree "x" in
+    let termvar = Bindlib.new_var mkfree "x" in
+    let fn = abstract (Type.var tyvar) (Bindlib.bind_var termvar (var termvar)) in
+    Bindlib.unbox (ty_abstract Kind.star (Bindlib.bind_var tyvar fn))
+  
+  let id_ty: Type.t =
+    let open Type in
+    let tyvar = Bindlib.new_var Type.mkfree "x" in
+    let arrow_ty = arrow (var tyvar) (var tyvar) in
+    let body = forall Kind.star (Bindlib.bind_var tyvar arrow_ty) in
+    Bindlib.unbox body
+
+  let kind_of_test () =
+    Alcotest.check kind
+      "unit type has kind star"
+      (Kind.Star) (kind_of Env.empty unit_ty)
+  
+  let type_of_test () =
+    Alcotest.check ty
+      "id fn has correct type"
+      id_ty (type_of Env.empty id_term)
+
+  let test_suite = [
+    ("kind_of", `Quick, kind_of_test);
+    ("type_of", `Quick, type_of_test);
+  ]
+end

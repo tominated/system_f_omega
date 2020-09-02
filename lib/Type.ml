@@ -103,6 +103,7 @@ module Test = struct
   let y_var = Bindlib.new_var mkfree "y"
 
   let id_term = Arrow ((Var x_var), (Var x_var))
+  let id_term2 = Arrow ((Var y_var), (Var y_var))
 
   let unit_ty = Record RowEmpty
   let row_basic = RowExtend (("x", unit_ty), RowExtend (("y", unit_ty), RowEmpty))
@@ -112,7 +113,7 @@ module Test = struct
   let alpha_equiv_test () =
     Alcotest.check ty
         "id fn is equiv to itself"
-        (id_term) id_term;
+        id_term id_term2;
 
     Alcotest.check ty
         "var x and x are equiv"
