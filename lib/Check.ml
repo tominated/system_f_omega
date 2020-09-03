@@ -277,14 +277,37 @@ module Test = struct
   let basic_module_usage : Term.t =
     let open Term in
     let basic_module =
-      row_empty
-      |> row_extend (Bindlib.box "z") (Term.lift z_term)
-      |> row_extend (Bindlib.box "id") (Term.lift id_term)
-      |> record
+      record
+      @@ row_extend (Bindlib.box "id") (Term.lift id_term)
+      @@ row_extend (Bindlib.box "z") (Term.lift z_term) row_empty
     in
     let projected_id = record_project basic_module (Bindlib.box "id") in
     let nat_id = ty_apply projected_id (Type.lift nat_ty) in
     Bindlib.unbox @@ apply nat_id two_term
+
+  let row_polymorphism_usage =
+    let open Term in
+    let rvar = Bindlib.new_var Type.mkfree "r" in
+    let xvar = Bindlib.new_var mkfree "x" in
+    let get_b =
+      ty_abstract Kind.row
+        (Bindlib.bind_var rvar
+           (abstract
+              ( Type.record
+              @@ Type.row_extend (Bindlib.box "b") (Type.lift nat_ty)
+                   (Type.var rvar) )
+              (Bindlib.bind_var xvar
+                 (record_project (var xvar) (Bindlib.box "b")))))
+    in
+    let my_record =
+      record
+      @@ row_extend (Bindlib.box "a") one_term
+      @@ row_extend (Bindlib.box "b") two_term row_empty
+    in
+    let my_record_ty =
+      Type.row_extend (Bindlib.box "a") (Type.lift nat_ty) Type.row_empty
+    in
+    Bindlib.unbox @@ apply (ty_apply get_b my_record_ty) my_record
 
   let kind_of_test () =
     Alcotest.check kind "unit type has kind star" Kind.Star
@@ -299,7 +322,9 @@ module Test = struct
       (type_of Env.empty (Bindlib.unbox two_term)) ;
     Alcotest.check ty
       "record projection of polymorphic id function, applied to two" nat_ty
-      (type_of Env.empty basic_module_usage)
+      (type_of Env.empty basic_module_usage) ;
+    Alcotest.check ty "calling a row polymorphic function with a record" nat_ty
+      (type_of Env.empty row_polymorphism_usage)
 
   let test_suite =
     [("kind_of", `Quick, kind_of_test); ("type_of", `Quick, type_of_test)]
