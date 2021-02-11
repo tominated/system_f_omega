@@ -216,24 +216,22 @@ module Test = struct
     let tyvar = Bindlib.new_var Type.mkfree "x" in
     let termvar = Bindlib.new_var mkfree "x" in
     let fn =
-      abstract (Type.var tyvar) (Bindlib.bind_var termvar (var termvar))
+      abstract (Type.var tyvar) @@ Bindlib.bind_var termvar (var termvar)
     in
-    Bindlib.unbox (ty_abstract Kind.star (Bindlib.bind_var tyvar fn))
+    Bindlib.unbox @@ ty_abstract Kind.star @@ Bindlib.bind_var tyvar fn
 
   let id_ty : Type.t =
     let open Type in
     let tyvar = Bindlib.new_var mkfree "x" in
     let arrow_ty = arrow (var tyvar) (var tyvar) in
-    forall Kind.star (Bindlib.bind_var tyvar arrow_ty) |> Bindlib.unbox
+    Bindlib.unbox @@ forall Kind.star @@ Bindlib.bind_var tyvar arrow_ty
 
   let nat_ty : Type.t =
     let open Type in
     let tvar = Bindlib.new_var mkfree "t" in
-    forall Kind.star
-      (Bindlib.bind_var tvar
-         (arrow (var tvar)
-            (arrow (group (arrow (var tvar) (var tvar))) (var tvar))))
-    |> Bindlib.unbox
+    Bindlib.unbox @@ forall Kind.star @@ Bindlib.bind_var tvar
+    @@ arrow (var tvar)
+    @@ arrow (group (arrow (var tvar) (var tvar))) (var tvar)
 
   let z_term : Term.t =
     let open Term in
@@ -242,12 +240,10 @@ module Test = struct
     let svar = Bindlib.new_var mkfree "s" in
     let t = Type.var tvar in
     let b = var bvar in
-    ty_abstract Kind.star
-      (Bindlib.bind_var tvar
-         (abstract t
-            (Bindlib.bind_var bvar
-               (abstract (Type.arrow t t) (Bindlib.bind_var svar b)))))
-    |> Bindlib.unbox
+    Bindlib.unbox @@ ty_abstract Kind.star @@ Bindlib.bind_var tvar
+    @@ abstract t @@ Bindlib.bind_var bvar
+    @@ abstract (Type.arrow t t)
+    @@ Bindlib.bind_var svar b
 
   let succ_term =
     let open Term in
@@ -259,16 +255,13 @@ module Test = struct
     let x = var xvar in
     let b = var bvar in
     let s = var svar in
-    abstract (Type.lift nat_ty)
-      (Bindlib.bind_var xvar
-         (ty_abstract Kind.star
-            (Bindlib.bind_var tvar
-               (abstract t
-                  (Bindlib.bind_var bvar
-                     (abstract (Type.arrow t t)
-                        (Bindlib.bind_var svar
-                           (apply s (apply (apply (ty_apply x t) b) s)))))))))
-    |> Bindlib.unbox
+    Bindlib.unbox
+    @@ abstract (Type.lift nat_ty)
+    @@ Bindlib.bind_var xvar @@ ty_abstract Kind.star @@ Bindlib.bind_var tvar
+    @@ abstract t @@ Bindlib.bind_var bvar
+    @@ abstract (Type.arrow t t)
+    @@ Bindlib.bind_var svar
+    @@ apply s (apply (apply (ty_apply x t) b) s)
 
   let one_term = Term.apply (Term.lift succ_term) (Term.lift z_term)
 
@@ -290,14 +283,13 @@ module Test = struct
     let rvar = Bindlib.new_var Type.mkfree "r" in
     let xvar = Bindlib.new_var mkfree "x" in
     let get_b =
-      ty_abstract Kind.row
-        (Bindlib.bind_var rvar
-           (abstract
-              ( Type.record
-              @@ Type.row_extend (Bindlib.box "b") (Type.lift nat_ty)
-                   (Type.var rvar) )
-              (Bindlib.bind_var xvar
-                 (record_project (var xvar) (Bindlib.box "b")))))
+      ty_abstract Kind.row @@ Bindlib.bind_var rvar
+      @@ abstract
+           ( Type.record
+           @@ Type.row_extend (Bindlib.box "b") (Type.lift nat_ty)
+                (Type.var rvar) )
+      @@ Bindlib.bind_var xvar
+      @@ record_project (var xvar) (Bindlib.box "b")
     in
     let my_record =
       record
