@@ -7,6 +7,9 @@ build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
 depends: [
+  "ocaml"
+  "ocaml-lsp-server"
+  "ocamlformat"
   "dune"
   "base"
   "stdio"
