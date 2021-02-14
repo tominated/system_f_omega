@@ -207,10 +207,13 @@ module Test = struct
 
   let ty = Alcotest.testable (Fmt.of_to_string Type.to_string) Type.alpha_equiv
 
+  (** Unit type : {} *)
   let unit_ty : Type.t = Bindlib.unbox (Type.record Type.row_empty)
 
+  (** Unit term = {} *)
   let unit_term : Term.t = Bindlib.unbox (Term.record Term.row_empty)
 
+  (** Identity function term = Λa:*. λx:a. x *)
   let id_term : Term.t =
     let open Term in
     let tyvar = Bindlib.new_var Type.mkfree "x" in
@@ -220,21 +223,24 @@ module Test = struct
     in
     Bindlib.unbox (ty_abstract Kind.star (Bindlib.bind_var tyvar fn))
 
+  (** Identity function type : ∀a:*. a -> a *)
   let id_ty : Type.t =
     let open Type in
     let tyvar = Bindlib.new_var mkfree "x" in
     let arrow_ty = arrow (var tyvar) (var tyvar) in
     forall Kind.star (Bindlib.bind_var tyvar arrow_ty) |> Bindlib.unbox
 
+  (** Natural number type : ∀t:*. t -> (t -> t) -> t *)
   let nat_ty : Type.t =
     let open Type in
     let tvar = Bindlib.new_var mkfree "t" in
     forall Kind.star
       (Bindlib.bind_var tvar
          (arrow (var tvar)
-            (arrow (group (arrow (var tvar) (var tvar))) (var tvar))))
+            (arrow (group (arrow (var tvar) (var tvar))) (var tvar)) ) )
     |> Bindlib.unbox
 
+  (** Zero term = Λt:*. λb:t. λs:(t -> t). b *)
   let z_term : Term.t =
     let open Term in
     let tvar = Bindlib.new_var Type.mkfree "t" in
@@ -246,9 +252,12 @@ module Test = struct
       (Bindlib.bind_var tvar
          (abstract t
             (Bindlib.bind_var bvar
-               (abstract (Type.arrow t t) (Bindlib.bind_var svar b)))))
+               (abstract (Type.arrow t t) (Bindlib.bind_var svar b)) ) ) )
     |> Bindlib.unbox
 
+  (** Succ term =
+    λx:(∀t:*. t -> (t -> t) -> t). Λt:*. λb:t. λs:(t -> t). s (x [t] b) s
+    *)
   let succ_term =
     let open Term in
     let tvar = Bindlib.new_var Type.mkfree "t" in
@@ -267,13 +276,18 @@ module Test = struct
                   (Bindlib.bind_var bvar
                      (abstract (Type.arrow t t)
                         (Bindlib.bind_var svar
-                           (apply s (apply (apply (ty_apply x t) b) s)))))))))
+                           (apply s (apply (apply (ty_apply x t) b) s)) ) ) ) ) ) ) )
     |> Bindlib.unbox
 
+  (** One nat number = succ (succ zero) *)
   let one_term = Term.apply (Term.lift succ_term) (Term.lift z_term)
 
+  (** Two nat number = succ one *)
   let two_term = Term.apply (Term.lift succ_term) one_term
 
+  (** Basic module use =
+    { id: id, z: zero }.id [nat] two
+    *)
   let basic_module_usage : Term.t =
     let open Term in
     let basic_module =
@@ -285,6 +299,9 @@ module Test = struct
     let nat_id = ty_apply projected_id (Type.lift nat_ty) in
     Bindlib.unbox @@ apply nat_id two_term
 
+  (** Row polymorphic function term =
+    (Λr:Row. λx:{b: nat, ...r}. x.b) [{ a: nat }] {a: one, b: two} 
+    *)
   let row_polymorphism_usage =
     let open Term in
     let rvar = Bindlib.new_var Type.mkfree "r" in
@@ -297,7 +314,7 @@ module Test = struct
               @@ Type.row_extend (Bindlib.box "b") (Type.lift nat_ty)
                    (Type.var rvar) )
               (Bindlib.bind_var xvar
-                 (record_project (var xvar) (Bindlib.box "b")))))
+                 (record_project (var xvar) (Bindlib.box "b")) ) ) )
     in
     let my_record =
       record
