@@ -4,6 +4,7 @@ type t =
   | Var of t Bindlib.var
   | Arrow of t * t
   | Forall of Kind.t * (t, t) Bindlib.binder
+  | Exists of Kind.t * (t, t) Bindlib.binder
   | Abstract of Kind.t * (t, t) Bindlib.binder
   | Apply of t * t
   | Group of t
@@ -23,6 +24,13 @@ let rec to_string = function
   | Forall (k, binder) ->
       let x, a = Bindlib.unbind binder in
       Printf.sprintf "∀(%s:%s).%s" (Bindlib.name_of x) (Kind.to_string k)
+        (to_string a)
+  | Exists (Star, binder) ->
+      let x, a = Bindlib.unbind binder in
+      Printf.sprintf "∃%s.%s" (Bindlib.name_of x) (to_string a)
+  | Exists (k, binder) ->
+      let x, a = Bindlib.unbind binder in
+      Printf.sprintf "∃(%s:%s).%s" (Bindlib.name_of x) (Kind.to_string k)
         (to_string a)
   | Abstract (Star, binder) ->
       let x, a = Bindlib.unbind binder in
@@ -58,6 +66,8 @@ let arrow = Bindlib.box_apply2 (fun a b -> Arrow (a, b))
 
 let forall = Bindlib.box_apply2 (fun k f -> Forall (k, f))
 
+let exists = Bindlib.box_apply2 (fun k f -> Exists (k, f))
+
 let abstract = Bindlib.box_apply2 (fun k f -> Abstract (k, f))
 
 let apply = Bindlib.box_apply2 (fun a b -> Apply (a, b))
@@ -80,6 +90,8 @@ let rec lift = function
       arrow (lift a) (lift b)
   | Forall (k, b) ->
       forall (Kind.lift k) (Bindlib.box_binder lift b)
+  | Exists (k, b) ->
+      exists (Kind.lift k) (Bindlib.box_binder lift b)
   | Abstract (k, b) ->
       abstract (Kind.lift k) (Bindlib.box_binder lift b)
   | Apply (a, b) ->
@@ -102,6 +114,8 @@ let rec alpha_equiv a b =
   | Arrow (a1, b1), Arrow (a2, b2) ->
       alpha_equiv a1 a2 && alpha_equiv b1 b2
   | Forall (k1, b1), Forall (k2, b2) ->
+      Kind.equal k1 k2 && Bindlib.eq_binder alpha_equiv b1 b2
+  | Exists (k1, b1), Exists (k2, b2) ->
       Kind.equal k1 k2 && Bindlib.eq_binder alpha_equiv b1 b2
   | Abstract (k1, b1), Abstract (k2, b2) ->
       Kind.equal k1 k2 && Bindlib.eq_binder alpha_equiv b1 b2

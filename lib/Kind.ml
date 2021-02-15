@@ -34,3 +34,5 @@ let rec lift = function
       row
   | Arrow (a, b) ->
       arrow (lift a) (lift b)
+
+let is_mono = function Arrow _ -> false | _ -> true

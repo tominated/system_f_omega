@@ -77,6 +77,12 @@ let rec kind_of env : Type.t -> Kind.t = function
       let env' = Env.set_ty env var k in
       kind_of env' body
   (* Check the kind of the body, with the newly bound type variable in the
+     environment *)
+  | Exists (k, binder) ->
+      let var, body = Bindlib.unbind binder in
+      let env' = Env.set_ty env var k in
+      kind_of env' body
+  (* Check the kind of the body, with the newly bound type variable in the
      environment, and return an Arrow kind as a type abstraction *)
   | Abstract (k, binder) ->
       let var, body = Bindlib.unbind binder in
@@ -156,6 +162,38 @@ let rec type_of env : Term.t -> Type.t = function
           failwith "[type_of] applied incorrect kind to type abstraction"
       | _ ->
           failwith "[type_of] expected a type abstraction" )
+  | Pack (witness_ty, term, into_ty) when Kind.is_mono (kind_of env into_ty)
+    -> (
+      (* Get the kind of the witness type for later *)
+      let witness_k = kind_of env witness_ty in
+      (* Ensure that we're packing into an existential *)
+      match into_ty with
+      | Exists (exists_k, binder) when Kind.equal exists_k witness_k ->
+          let term_ty = type_of env term in
+          let subst_exists_ty = Bindlib.subst binder witness_ty in
+          if Type.alpha_equiv term_ty subst_exists_ty then into_ty
+          else failwith "[type_of] packing incorrect type into existential"
+      | Exists _ ->
+          failwith "[type_of] cannot pack witness type in to diff kind"
+      | _ ->
+          failwith "[type_of] can only pack in to existential type" )
+  | Pack _ ->
+      failwith "[type_of] can only pack mono-kinded types"
+  | Unpack (impl, binder) -> (
+    match type_of env impl with
+    | Exists (k, exists_binder) ->
+        let _, impl_ty = Bindlib.unbind exists_binder in
+        let tyvar, body_binder = Bindlib.unbind binder in
+        let var, body = Bindlib.unbind body_binder in
+        (* add the hidden type and term to the env *)
+        let env' = Env.set_var (Env.set_ty env tyvar k) var impl_ty in
+        let body_ty = type_of env' body in
+        (* check the kind without the hidden type/term in the env *)
+        let body_k = kind_of env body_ty in
+        if Kind.is_mono body_k then body_ty
+        else failwith "[type_of] unpack body is not mono-kind"
+    | _ ->
+        failwith "[type_of] unpacked non-existential type" )
   | RowEmpty ->
       RowEmpty
   | RowExtend ((label, field), rest) -> (
@@ -230,6 +268,35 @@ module Test = struct
     let arrow_ty = arrow (var tyvar) (var tyvar) in
     Bindlib.unbox @@ forall Kind.star @@ Bindlib.bind_var tyvar arrow_ty
 
+  (* boolean type : ∀t:* t -> t -> t *)
+  let bool_ty =
+    let open Type in
+    let tvar = Bindlib.new_var mkfree "t" in
+    let t = var tvar in
+    forall Kind.star @@ Bindlib.bind_var tvar @@ arrow t (arrow t t)
+
+  (* true term : Λt:* λtrue:t. λfalse:t. true *)
+  let true_term =
+    let open Term in
+    let tvar = Bindlib.new_var Type.mkfree "t" in
+    let true_var = Bindlib.new_var mkfree "true" in
+    let false_var = Bindlib.new_var mkfree "false" in
+    let t, true_val = (Type.var tvar, var true_var) in
+    ty_abstract Kind.star @@ Bindlib.bind_var tvar @@ abstract t
+    @@ Bindlib.bind_var true_var @@ abstract t @@ Bindlib.bind_var false_var
+    @@ true_val
+
+  (* false term : Λt:* λtrue:t. λfalse:t. false *)
+  let false_term =
+    let open Term in
+    let tvar = Bindlib.new_var Type.mkfree "t" in
+    let true_var = Bindlib.new_var mkfree "true" in
+    let false_var = Bindlib.new_var mkfree "false" in
+    let t, false_val = (Type.var tvar, var false_var) in
+    ty_abstract Kind.star @@ Bindlib.bind_var tvar @@ abstract t
+    @@ Bindlib.bind_var true_var @@ abstract t @@ Bindlib.bind_var false_var
+    @@ false_val
+
   (** Natural number type : ∀t:*. t -> (t -> t) -> t *)
   let nat_ty : Type.t =
     let open Type in
@@ -238,7 +305,7 @@ module Test = struct
     @@ arrow (var tvar)
     @@ arrow (group (arrow (var tvar) (var tvar))) (var tvar)
 
-  (** Zero term = Λt:*. λb:t. λs:(t -> t). b *)
+  (** Zero term = Λt:*. λz:t. λs:(t -> t). z *)
   let z_term : Term.t =
     let open Term in
     let tvar = Bindlib.new_var Type.mkfree "t" in
@@ -252,7 +319,7 @@ module Test = struct
     @@ Bindlib.bind_var svar b
 
   (** Succ term =
-    λx:(∀t:*. t -> (t -> t) -> t). Λt:*. λb:t. λs:(t -> t). s (x [t] b) s
+    λx:nat. Λt:*. λz:t. λs:(t -> t). s (x [t] z) s
     *)
   let succ_term =
     let open Term in
@@ -271,6 +338,49 @@ module Test = struct
     @@ abstract (Type.arrow t t)
     @@ Bindlib.bind_var svar
     @@ apply s (apply (apply (ty_apply x t) b) s)
+
+  let add_ty =
+    let open Type in
+    let nat = lift nat_ty in
+    arrow nat (arrow nat nat)
+
+  (** Nat add term = λa:nat. λb:nat. Λt:*. λz:t. λs:(t -> t). b [t] (a [x] s z) s *)
+  let add_term =
+    let open Term in
+    let avar = Bindlib.new_var mkfree "a" in
+    let bvar = Bindlib.new_var mkfree "b" in
+    let svar = Bindlib.new_var mkfree "s" in
+    let zvar = Bindlib.new_var mkfree "z" in
+    let tvar = Bindlib.new_var Type.mkfree "t" in
+    let a, b, s, z, t =
+      (var avar, var bvar, var svar, var zvar, Type.var tvar)
+    in
+    abstract (Type.lift nat_ty)
+    @@ Bindlib.bind_var avar
+    @@ abstract (Type.lift nat_ty)
+    @@ Bindlib.bind_var bvar @@ ty_abstract Kind.star @@ Bindlib.bind_var tvar
+    @@ abstract t @@ Bindlib.bind_var zvar
+    @@ abstract (Type.arrow t t)
+    @@ Bindlib.bind_var svar
+    @@ apply (apply (ty_apply b t) (apply (apply (ty_apply a t) z) s)) s
+
+  (* is_zero type : nat -> bool *)
+  let is_zero_ty =
+    let open Type in
+    arrow (lift nat_ty) bool_ty
+
+  (* is_zero term = λn:nat. n [bool] true (λ_:bool. false) *)
+  let is_zero_term =
+    let open Term in
+    let nvar = Bindlib.new_var mkfree "n" in
+    let ignored_var = Bindlib.new_var mkfree "_" in
+    let n = var nvar in
+    abstract (Type.lift nat_ty)
+    @@ Bindlib.bind_var nvar
+    @@ apply (apply (ty_apply n bool_ty) true_term)
+    @@ abstract bool_ty
+    @@ Bindlib.bind_var ignored_var
+    @@ false_term
 
   (** One nat number = succ (succ zero) *)
   let one_term = Term.apply (Term.lift succ_term) (Term.lift z_term)
@@ -318,6 +428,42 @@ module Test = struct
     in
     Bindlib.unbox @@ apply (ty_apply get_b my_record_ty) my_record
 
+  (** module type : ∃t:*. { zero: t, one: t, combine: t -> t -> t, is_zero: t -> bool } *)
+  let existential_module_ty =
+    let open Type in
+    let tvar = Bindlib.new_var Type.mkfree "t" in
+    let t = var tvar in
+    exists Kind.star @@ Bindlib.bind_var tvar @@ record
+    @@ row_extend (Bindlib.box "zero") t
+    @@ row_extend (Bindlib.box "one") t
+    @@ row_extend (Bindlib.box "combine") (arrow t (arrow t t))
+    @@ row_extend (Bindlib.box "is_zero") (arrow t bool_ty) row_empty
+
+  (** Natural number module term =
+    pack {nat, { zero: zero, one: one, combine: add, isEmpty:  }} as monoid
+    *)
+  let nat_module_term =
+    let open Term in
+    let impl =
+      record
+      @@ row_extend (Bindlib.box "zero") (lift z_term)
+      @@ row_extend (Bindlib.box "one") one_term
+      @@ row_extend (Bindlib.box "combine") add_term
+      @@ row_extend (Bindlib.box "is_zero") is_zero_term row_empty
+    in
+    pack (Type.lift nat_ty) impl existential_module_ty
+
+  (* Nat monoid usage = unpack {T, m} = nat_monoid in m.combine m.empty m.empty *)
+  let nat_module_usage =
+    let open Term in
+    let tvar = Bindlib.new_var Type.mkfree "t" in
+    let mvar = Bindlib.new_var mkfree "m" in
+    let m = var mvar in
+    let m_is_zero = record_project m (Bindlib.box "is_zero") in
+    let m_zero = record_project m (Bindlib.box "zero") in
+    unpack nat_module_term @@ Bindlib.bind_var tvar @@ Bindlib.bind_var mvar
+    @@ apply m_is_zero m_zero
+
   let kind_of_test () =
     Alcotest.check kind "unit type has kind star" Kind.Star
       (kind_of Env.empty unit_ty) ;
@@ -329,11 +475,20 @@ module Test = struct
     Alcotest.check ty "z has type of nat" nat_ty (type_of Env.empty z_term) ;
     Alcotest.check ty "two has type of nat" nat_ty
       (type_of Env.empty (Bindlib.unbox two_term)) ;
+    Alcotest.check ty "add has correct type" (Bindlib.unbox add_ty)
+      (type_of Env.empty (Bindlib.unbox add_term)) ;
     Alcotest.check ty
       "record projection of polymorphic id function, applied to two" nat_ty
       (type_of Env.empty basic_module_usage) ;
     Alcotest.check ty "calling a row polymorphic function with a record" nat_ty
-      (type_of Env.empty row_polymorphism_usage)
+      (type_of Env.empty row_polymorphism_usage) ;
+    Alcotest.check ty "is_zero returns bool" (Bindlib.unbox bool_ty)
+      (type_of Env.empty (Bindlib.unbox @@ Term.apply is_zero_term one_term)) ;
+    Alcotest.check ty "pack"
+      (Bindlib.unbox existential_module_ty)
+      (type_of Env.empty @@ Bindlib.unbox nat_module_term) ;
+    Stdio.printf "uhhh monoid usage?: \n%s\n"
+      (Term.to_string @@ Bindlib.unbox nat_module_usage)
 
   let test_suite =
     [("kind_of", `Quick, kind_of_test); ("type_of", `Quick, type_of_test)]

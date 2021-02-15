@@ -6,6 +6,8 @@ type t =
   | Apply of t * t
   | TypeAbstract of Kind.t * (Type.t, t) Bindlib.binder
   | TypeApply of t * Type.t
+  | Pack of Type.t * t * Type.t
+  | Unpack of t * (Type.t, (t, t) Bindlib.binder) Bindlib.binder
   | RowEmpty
   | RowExtend of (string * t) * t
   | Record of t
@@ -32,6 +34,15 @@ let rec to_string = function
         (to_string body)
   | TypeApply (term, ty) ->
       Printf.sprintf "[%s %s]" (to_string term) (Type.to_string ty)
+  | Pack (witness_ty, impl, ty) ->
+      Printf.sprintf "pack {%s, %s} as %s"
+        (Type.to_string witness_ty)
+        (to_string impl) (Type.to_string ty)
+  | Unpack (packed, binder) ->
+      let tyvar, binder' = Bindlib.unbind binder in
+      let var, body = Bindlib.unbind binder' in
+      Printf.sprintf "unpack {%s, %s} = %s in\n%s" (Bindlib.name_of tyvar)
+        (Bindlib.name_of var) (to_string packed) (to_string body)
   | RowEmpty ->
       ""
   | RowExtend ((label, term), RowEmpty) ->
@@ -67,6 +78,10 @@ let ty_abstract = Bindlib.box_apply2 (fun k b -> TypeAbstract (k, b))
 
 let ty_apply = Bindlib.box_apply2 (fun te ty -> TypeApply (te, ty))
 
+let pack = Bindlib.box_apply3 (fun ty impl ex -> Pack (ty, impl, ex))
+
+let unpack = Bindlib.box_apply2 (fun packed binder -> Unpack (packed, binder))
+
 let row_empty = Bindlib.box RowEmpty
 
 let row_extend =
@@ -94,6 +109,10 @@ let rec lift = function
       ty_abstract (Kind.lift k) (Bindlib.box_binder lift binder)
   | TypeApply (term, ty) ->
       ty_apply (lift term) (Type.lift ty)
+  | Pack (ty, impl, ex) ->
+      pack (Type.lift ty) (lift impl) (Type.lift ex)
+  | Unpack (packed, binder) ->
+      unpack (lift packed) (Bindlib.box_binder (Bindlib.box_binder lift) binder)
   | RowEmpty ->
       row_empty
   | RowExtend ((label, term), rest) ->
